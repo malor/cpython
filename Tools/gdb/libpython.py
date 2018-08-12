@@ -101,6 +101,21 @@ ENCODING = locale.getpreferredencoding()
 
 EVALFRAME = '_PyEval_EvalFrameDefault'
 
+# location of PyFrameObject* in a _PyEval_EvalFrameDefault frame. This can be
+# set to point to a CPU register instead of "f", which can be useful for
+# debugging of "optimized out" frames, when gdb can not reliably determine
+# where the value of "f" is stored. E.g.:
+#   (gdb) python PYFRAME_OBJECT_PTR_LOCATION = '$r12'
+PYFRAME_OBJECT_PTR_LOCATION = 'f'
+
+
+def _read_pyframe_object_ptr(frame):
+    if PYFRAME_OBJECT_PTR_LOCATION.startswith('$'):
+        return frame.read_register(PYFRAME_OBJECT_PTR_LOCATION[1:])
+    else:
+        return frame.read_var(PYFRAME_OBJECT_PTR_LOCATION)
+
+
 class NullPyObjectPtr(RuntimeError):
     pass
 
@@ -1591,7 +1606,7 @@ class Frame(object):
 
     def get_pyop(self):
         try:
-            f = self._gdbframe.read_var('f')
+            f = _read_pyframe_object_ptr(self._gdbframe)
             frame = PyFrameObjectPtr.from_pyobject_ptr(f)
             if not frame.is_optimized_out():
                 return frame
@@ -1601,7 +1616,7 @@ class Frame(object):
             orig_frame = frame
             caller = self._gdbframe.older()
             if caller:
-                f = caller.read_var('f')
+                f = _read_pyframe_object_ptr(caller)
                 frame = PyFrameObjectPtr.from_pyobject_ptr(f)
                 if not frame.is_optimized_out():
                     return frame
